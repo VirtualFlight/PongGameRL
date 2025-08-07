@@ -12,6 +12,9 @@ from gymnasium.spaces import Box, Discrete
 import os
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common import env_checker
+from stable_baselines3 import DQN
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 
 
@@ -41,10 +44,10 @@ class PongGame(Env):
 
     def step(self, action):
         action_map = {
-            0: 'up',
-            1: 'down',
-            2: 'up',
-            3: 'down'
+            0: 'w',
+            1: 's',
+            2: 'w',
+            3: 's'
         }
 
         if action > 1: # Stop action
@@ -107,10 +110,42 @@ class PongGame(Env):
         _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         bw = cv2.resize(bw, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         res = pytesseract.image_to_string(bw,config='--psm 13')
-        if res[0] != "O" and (res[0] in done_strings[0] or res[0] in done_strings[1]):
+        if res and res[0] != "O" and (res[0] in done_strings[0] or res[0] in done_strings[1]):
             done = True
         return done, done_cap
 
+#Creating callback
+class TrainAndLoggingCallback(BaseCallback):
+
+    def __init__(self, check_freq, save_path, verbose=1):
+        super(TrainAndLoggingCallback, self).__init__(verbose)
+        self.check_freq = check_freq
+        self.save_path = save_path
+
+    def _init_callback(self):
+        if self.save_path is not None:
+            os.makedirs(self.save_path, exist_ok=True)
+
+    def _on_step(self):
+        if self.n_calls % self.check_freq == 0:
+            model_path = os.path.join(self.save_path, 'best_model_{}'.format(self.n_calls))
+            self.model.save(model_path)
+
+        return True
+
+
+
+CHECKPOINT_DIR = './train/'
+LOG_DIR = './logs/'
+callback = TrainAndLoggingCallback(check_freq=1000, save_path=CHECKPOINT_DIR)
+
+
+
+# Traning DQN model
+env = PongGame()
+model = DQN('CnnPolicy', env, tensorboard_log=LOG_DIR, verbose=1, buffer_size=20000, learning_starts=1000)
+model.learn(total_timesteps=1000, callback=callback)
+# model.load('train_first/best_mode l_50000')
 
 
 # -----------------------------------------HELPER FUNCTIONS-----------------------------------------
